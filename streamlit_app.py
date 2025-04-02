@@ -466,11 +466,11 @@ def main():
                         "Optimistic": convert_numpy_types(st.session_state.results_df.loc[selected_report_site]["Optimistic"]),
                         "Conservative": convert_numpy_types(st.session_state.results_df.loc[selected_report_site]["Conservative"])
                     }
-                }
-                    label="Download Site Report (JSON)",
-                    data=json.dumps(report_data, indent=4),
-                    file_name=f"{selected_report_site}report{selected_month}_{selected_year}.json",
-                    mime="application/json"
-                )
+                    }
+                        label="Download Site Report (JSON)",
+                        data=json.dumps(report_data, indent=4),
+                        file_name=f"{selected_report_site}report{selected_month}_{selected_year}.json",
+                        mime="application/json"
+                    )
 if __name__ == "__main__":
     main()
