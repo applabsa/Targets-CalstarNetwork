@@ -99,7 +99,7 @@ def get_last_six_months(selected_month, selected_year):
     return months[::-1]
 
 def get_yoy_growth(site, month, year):
-    current_sales = st.session_state.sales_data[site][year].get(month, 0)
+    current_sales = st.session_state.sales_data[site].get(year, {}).get(month, 0)
     prev_year_sales = st.session_state.sales_data[site].get(year-1, {}).get(month, 0)
     return ((current_sales - prev_year_sales)/prev_year_sales)*100 if prev_year_sales !=0 else 0
 
@@ -108,9 +108,21 @@ def get_mom_growth(site, month, year):
     current_index = month_order.index(month)
     prev_month = month_order[(current_index -1)%12]
     prev_year = year -1 if current_index ==0 else year
-    current_sales = st.session_state.sales_data[site][year].get(month, 0)
+    current_sales = st.session_state.sales_data[site].get(year, {}).get(month, 0)
     prev_sales = st.session_state.sales_data[site].get(prev_year, {}).get(prev_month, 0)
     return ((current_sales - prev_sales)/prev_sales)*100 if prev_sales !=0 else 0
+
+def get_future_months(selected_month, selected_year, months_ahead=6):
+    month_order = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    current_month_index = month_order.index(selected_month)
+    future_months = []
+    for i in range(1, months_ahead+1):
+        index = (current_month_index + i) % 12
+        month = month_order[index]
+        year = selected_year + (current_month_index + i) // 12
+        future_months.append((month, year))
+    return future_months
 
 def main():
     st.set_page_config(layout="wide", page_title="Fuel Sales Dashboard")
@@ -172,22 +184,21 @@ def main():
                 historical_sales = []
                 for year in base_years:
                     if (year in st.session_state.sales_data.get(site, {}) and 
-                        selected_month in st.session_state.sales_data[site][year]):
+                        selected_month in st.session_state.sales_data[site].get(year, {})):
                         historical_sales.append(st.session_state.sales_data[site][year][selected_month])
                 if historical_sales:
                     base = sum(historical_sales) / len(historical_sales)
                     optimistic = base * (1 + optimistic_percent/100)
                     conservative = base * (1 - conservative_percent/100)
                     rounded = {
-                        "base": round_up_to_thousand(base),
-                        "optimistic": round_up_to_thousand(optimistic),
-                        "conservative": round_up_to_thousand(conservative)
+                        "Base Target": round_up_to_thousand(base),
+                        "Optimistic": round_up_to_thousand(optimistic),
+                        "Conservative": round_up_to_thousand(conservative)
                     }
                     results[site] = rounded
                 else:
                     st.warning(f"Insufficient data for {site}")
             df_results = pd.DataFrame(results).T
-            df_results.columns = ["Base Target", "Optimistic", "Conservative"]
             st.session_state.results_df = df_results
             st.session_state.selected_sites = selected_sites
             st.session_state.selected_mode = calculation_mode
@@ -198,7 +209,7 @@ def main():
                 valid = True
                 for site in selected_sites:
                     if (year in st.session_state.sales_data.get(site, {}) and 
-                        selected_month in st.session_state.sales_data[site][year]):
+                        selected_month in st.session_state.sales_data[site].get(year, {})):
                         total_sales += st.session_state.sales_data[site][year][selected_month]
                     else:
                         valid = False
@@ -227,7 +238,7 @@ def main():
             max_sales = 0
             best_month = ""
             best_year = 0
-            for year in st.session_state.sales_data[site]:
+            for year in st.session_state.sales_data.get(site, {}):
                 for month in st.session_state.sales_data[site][year]:
                     sales = st.session_state.sales_data[site][year][month]
                     if sales > max_sales:
@@ -247,16 +258,45 @@ def main():
             site_sales = []
             for month, year in last_six_months:
                 if (year in st.session_state.sales_data.get(site, {}) and 
-                    month in st.session_state.sales_data[site][year]):
+                    month in st.session_state.sales_data[site].get(year, {})):
                     site_sales.append(st.session_state.sales_data[site][year][month])
                 else:
                     site_sales.append(0)
             last_six_sales[site] = site_sales
         st.session_state.last_six_df = pd.DataFrame(last_six_sales, index=[m[0] for m in last_six_months])
-    
+        
+        # Future Projections
+        if "results_df" in st.session_state:
+            months_ahead = 6
+            future_months = get_future_months(selected_month, selected_year, months_ahead)
+            
+            # Calculate average MoM growth from last 6 months
+            if "last_six_df" in st.session_state:
+                sites = selected_sites if calculation_mode == "Per Site" else ["Combined"]
+                avg_growth = []
+                for site in sites:
+                    sales = st.session_state.last_six_df[site]
+                    growth = (sales.pct_change() * 100).mean()
+                    avg_growth.append(growth)
+                avg_growth_rate = np.mean(avg_growth) / 100  # Convert to decimal
+                
+                # Generate projections
+                base_target = st.session_state.results_df["Base Target"].mean()
+                projection_data = []
+                for i, (month, year) in enumerate(future_months):
+                    projected = base_target * (1 + avg_growth_rate) ** (i+1)
+                    projection_data.append({
+                        "Month": f"{month} {year}",
+                        "Projected": round(projected),
+                        "Optimistic": round(projected * (1 + optimistic_percent/100)),
+                        "Conservative": round(projected * (1 - conservative_percent/100))
+                    })
+                st.session_state.future_proj = pd.DataFrame(projection_data)
+
     # DASHBOARD LAYOUT
     if "results_df" in st.session_state:
         st.subheader("Dashboard Results")
+        
         # Key Metrics
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -273,10 +313,12 @@ def main():
             "Holiday Calendar", 
             "Top Month Sales", 
             "Last 6 Months Performance",
-            "Site Report"
+            "Site Report",
+            "Future Projections"
         ])
         
-        with tabs[0]:  # Target Comparison
+        # Tab 1: Target Comparison
+        with tabs[0]:
             if st.session_state.selected_mode == "Per Site":
                 fig, ax = plt.subplots(figsize=(10, 6))
                 df_results = st.session_state.results_df
@@ -286,18 +328,15 @@ def main():
                 st.pyplot(fig)
             else:
                 fig, ax = plt.subplots(figsize=(8, 4))
-                values = [
-                    st.session_state.results_df.iloc[0]['Base Target'],
-                    st.session_state.results_df.iloc[0]['Optimistic'],
-                    st.session_state.results_df.iloc[0]['Conservative']
-                ]
+                values = [st.session_state.results_df.iloc[0][col] for col in ["Base Target", "Optimistic", "Conservative"]]
                 labels = ["Base", "Optimistic", "Conservative"]
                 ax.bar(labels, values)
                 plt.title("Combined Target Comparison")
                 plt.ylabel("Sales (R)")
                 st.pyplot(fig)
         
-        with tabs[1]:  # Historical Sales
+        # Tab 2: Historical Sales
+        with tabs[1]:
             if st.session_state.selected_mode == "Per Site":
                 df_sales = pd.DataFrame()
                 for site in selected_sites:
@@ -305,7 +344,7 @@ def main():
                     sales = []
                     for year in base_years:
                         if (year in st.session_state.sales_data.get(site, {}) and 
-                            selected_month in st.session_state.sales_data[site][year]):
+                            selected_month in st.session_state.sales_data[site].get(year, {})):
                             years.append(year)
                             sales.append(st.session_state.sales_data[site][year][selected_month])
                     df_sales = pd.concat([df_sales, pd.DataFrame({"Year": years, "Sales": sales, "Site": site})])
@@ -325,12 +364,15 @@ def main():
                     valid = True
                     for site in selected_sites:
                         if (year in st.session_state.sales_data.get(site, {}) and 
-                            selected_month in st.session_state.sales_data[site][year]):
+                            selected_month in st.session_state.sales_data[site].get(year, {})):
                             total += st.session_state.sales_data[site][year][selected_month]
                         else:
                             valid = False
                             break
-                    combined_sales.append(total if valid else np.nan)
+                    if valid:
+                        combined_sales.append(total)
+                    else:
+                        combined_sales.append(np.nan)
                 fig, ax = plt.subplots(figsize=(8, 4))
                 ax.plot(base_years, combined_sales, marker='o')
                 plt.title(f"Combined Historical Sales for {selected_month}")
@@ -338,7 +380,8 @@ def main():
                 plt.ylabel("Sales (R)")
                 st.pyplot(fig)
         
-        with tabs[2]:  # Holiday Calendar
+        # Tab 3: Holiday Calendar
+        with tabs[2]:
             if selected_year in holidays_sa:
                 holidays = [h for h in holidays_sa[selected_year] if h.startswith(selected_month)]
                 st.write("### Public Holidays")
@@ -346,12 +389,13 @@ def main():
             else:
                 st.write("No holidays data available for selected year")
         
-        with tabs[3]:  # Top Month Sales
+        # Tab 4: Top Month Sales
+        with tabs[3]:
             st.write("### Top Performing Month for Each Site")
             st.table(st.session_state.top_month_df.style.format({"Sales": "{:,}"}))
-            st.caption("Shows the month/year with highest sales for each site")
         
-        with tabs[4]:  # Last 6 Months Performance
+        # Tab 5: Last 6 Months Performance
+        with tabs[4]:
             st.write("### Last 6 Months Performance")
             fig, ax = plt.subplots(figsize=(12, 6))
             for site in selected_sites:
@@ -373,7 +417,8 @@ def main():
             st.write("### Month-over-Month Growth")
             st.table(pd.DataFrame(growth_rates, index=["Growth"]).T)
         
-        with tabs[5]:  # Site Report
+        # Tab 6: Site Report
+        with tabs[5]:
             selected_report_site = st.selectbox("Select Site for Report", selected_sites)
             if selected_report_site not in st.session_state.sales_data:
                 st.error(f"No data available for {selected_report_site}")
@@ -387,11 +432,9 @@ def main():
                     current_sales = st.session_state.sales_data[selected_report_site].get(selected_year, {}).get(selected_month, 0)
                     st.metric("Current Month Sales", value=f"{current_sales:,}")
                 with col2:
-                    yoy_growth = get_yoy_growth(selected_report_site, selected_month, selected_year)
-                    st.metric("YoY Growth", value=f"{yoy_growth:.1f}%")
+                    st.metric("YoY Growth", value=f"{get_yoy_growth(selected_report_site, selected_month, selected_year):.1f}%")
                 with col3:
-                    mom_growth = get_mom_growth(selected_report_site, selected_month, selected_year)
-                    st.metric("MoM Growth", value=f"{mom_growth:.1f}%")
+                    st.metric("MoM Growth", value=f"{get_mom_growth(selected_report_site, selected_month, selected_year):.1f}%")
                 
                 # Target Comparison
                 target = st.session_state.results_df.loc[selected_report_site]["Base Target"]
@@ -404,7 +447,7 @@ def main():
                 hist_sales = []
                 for year in base_years:
                     if (year in st.session_state.sales_data[selected_report_site] and 
-                        selected_month in st.session_state.sales_data[selected_report_site][year]):
+                        selected_month in st.session_state.sales_data[selected_report_site].get(year, {})):
                         hist_sales.append({
                             "Year": year,
                             "Sales": st.session_state.sales_data[selected_report_site][year][selected_month]
@@ -434,8 +477,8 @@ def main():
                 report_data = {
                     "KPIs": {
                         "Current Month Sales": convert_numpy_types(current_sales),
-                        "YoY Growth": f"{convert_numpy_types(yoy_growth):.1f}%",
-                        "MoM Growth": f"{convert_numpy_types(mom_growth):.1f}%",
+                        "YoY Growth": f"{convert_numpy_types(get_yoy_growth(selected_report_site, selected_month, selected_year)):.1f}%",
+                        "MoM Growth": f"{convert_numpy_types(get_mom_growth(selected_report_site, selected_month, selected_year)):.1f}%",
                         "Variance from Target": f"{convert_numpy_types(variance):.1f}%"
                     },
                     "Historical Sales": [
@@ -455,6 +498,39 @@ def main():
                     file_name=f"{selected_report_site}_report_{selected_month}_{selected_year}.json",
                     mime="application/json"
                 )
-
+        
+        # Tab 7: Future Projections
+        with tabs[6]:
+            if "future_proj" in st.session_state:
+                st.subheader("Future Projections (Next 6 Months)")
+                st.table(st.session_state.future_proj.style.format({
+                    "Projected": "{:,}",
+                    "Optimistic": "{:,}",
+                    "Conservative": "{:,}"
+                }))
+                
+                # Line chart
+                fig, ax = plt.subplots(figsize=(12, 6))
+                ax.plot(st.session_state.future_proj["Month"], 
+                        st.session_state.future_proj["Projected"], 
+                        marker='o', label="Projected Target")
+                ax.plot(st.session_state.future_proj["Month"], 
+                        st.session_state.future_proj["Optimistic"], 
+                        linestyle="--", label="Optimistic")
+                ax.plot(st.session_state.future_proj["Month"], 
+                        st.session_state.future_proj["Conservative"], 
+                        linestyle=":", label="Conservative")
+                plt.title("Sales Projections")
+                plt.xlabel("Month")
+                plt.ylabel("Sales (R)")
+                plt.xticks(rotation=45)
+                plt.legend()
+                st.pyplot(fig)
+                
+                # Growth Analysis
+                st.write("### Projected Growth")
+                st.write(f"Average MoM Growth Rate: {avg_growth_rate * 100:.1f}%")
+                st.write(f"Base Target for Projections: {base_target:,}")
+    
 if __name__ == "__main__":
     main()
