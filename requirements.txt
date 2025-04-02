@@ -1,8 +1,6 @@
-streamlit==1.18.1
-matplotlib==3.7.1
+streamlit==1.29.0
+matplotlib==3.8.2
 numpy>=1.26.0
-pandas==1.5.3  # Adjust based on your needs
-matplotlib==3.7.1
-pip>=25.0.1
-setuptools>=68.0.0
-wheel>=0.41.0
+pandas==1.5.3  # Keep this if needed
+setuptools>=68.0
+wheel>=0.41.2
