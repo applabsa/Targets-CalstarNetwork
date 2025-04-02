@@ -462,6 +462,4 @@ def main():
                     file_name=f"{selected_report_site}report{selected_month}_{selected_year}.json",
                     mime="application/json"
                 )
-
-if _name_ == "_main_":
-    main()
+if __name__ == "__main__":
