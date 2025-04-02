@@ -443,34 +443,34 @@ def main():
                 
                 # Download Report
                # Convert numpy types to Python types
-def convert_numpy_types(obj):
-    if isinstance(obj, np.integer):
-        return int(obj)
-    elif isinstance(obj, np.floating):
-        return float(obj)
-    return obj
-
-report_data = {
-    "KPIs": {
-        "Current Month Sales": convert_numpy_types(current_sales),
-        "YoY Growth": f"{convert_numpy_types(get_yoy_growth(selected_report_site, selected_month, selected_year)):.1f}%",
-        "MoM Growth": f"{convert_numpy_types(get_mom_growth(selected_report_site, selected_month, selected_year)):.1f}%",
-        "Variance from Target": f"{convert_numpy_types(variance):.1f}%"
-    },
-    "Historical Sales": [
-        {k: convert_numpy_types(v) for k, v in row.items()}
-        for row in df_hist.to_dict('records')
-    ],
-    "Target Details": {
-        "Base Target": convert_numpy_types(target),
-        "Optimistic": convert_numpy_types(st.session_state.results_df.loc[selected_report_site]["Optimistic"]),
-        "Conservative": convert_numpy_types(st.session_state.results_df.loc[selected_report_site]["Conservative"])
-    }
-}
-                    label="Download Site Report (JSON)",
-                    data=json.dumps(report_data, indent=4),
-                    file_name=f"{selected_report_site}report{selected_month}_{selected_year}.json",
-                    mime="application/json"
-                )
+                def convert_numpy_types(obj):
+                    if isinstance(obj, np.integer):
+                        return int(obj)
+                    elif isinstance(obj, np.floating):
+                        return float(obj)
+                    return obj
+                
+                report_data = {
+                    "KPIs": {
+                        "Current Month Sales": convert_numpy_types(current_sales),
+                        "YoY Growth": f"{convert_numpy_types(get_yoy_growth(selected_report_site, selected_month, selected_year)):.1f}%",
+                        "MoM Growth": f"{convert_numpy_types(get_mom_growth(selected_report_site, selected_month, selected_year)):.1f}%",
+                        "Variance from Target": f"{convert_numpy_types(variance):.1f}%"
+                    },
+                    "Historical Sales": [
+                        {k: convert_numpy_types(v) for k, v in row.items()}
+                        for row in df_hist.to_dict('records')
+                    ],
+                    "Target Details": {
+                        "Base Target": convert_numpy_types(target),
+                        "Optimistic": convert_numpy_types(st.session_state.results_df.loc[selected_report_site]["Optimistic"]),
+                        "Conservative": convert_numpy_types(st.session_state.results_df.loc[selected_report_site]["Conservative"])
+                    }
+                }
+                                    label="Download Site Report (JSON)",
+                                    data=json.dumps(report_data, indent=4),
+                                    file_name=f"{selected_report_site}report{selected_month}_{selected_year}.json",
+                                    mime="application/json"
+                                )
 if __name__ == "__main__":
     main()
